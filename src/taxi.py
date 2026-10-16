@@ -19,6 +19,7 @@ class Route:
             raise ValueError('Fare must be finite and non-negative')
 
     def daily_revenue(self) -> np.ndarray:
+        # Passenger counts and fare are per day and per passenger, respectively.
         return self.counts*self.fare
 
     def total_revenue(self) -> float:
@@ -31,6 +32,9 @@ class Route:
 
 
 class Forecaster(ABC):
+    """Require each route forecasting method to fit and predict."""
+
+    # The abstract methods are a common contract for all three models.
     @abstractmethod
     def fit(self, values):
         pass
@@ -48,6 +52,7 @@ class MovingAverage(Forecaster):
         return self
 
     def predict(self) -> float:
+        # The most recent three days each receive equal weight.
         return float(np.mean(self.values[-3:]))
 
 
@@ -63,6 +68,7 @@ class ExponentialSmoothing(Forecaster):
             raise ValueError('Need two days of data')
         self.level = float(values[0])
         for value in values[1:]:
+            # Alpha weights the new day; (1-alpha) retains the previous level.
             self.level = self.alpha*value+(1-self.alpha)*self.level
         return self
 
@@ -85,6 +91,7 @@ class LinearTrend(Forecaster):
 
 def equilibrium() -> tuple:
     """Solve 120 - 0.02P = Q and 10 + 0.03P = Q."""
+    # Rearrange both equations into coefficients of [fare P, quantity Q].
     fare, passengers_per_trip_hour = linalg.solve(
         np.array([[.02, 1], [-.03, 1]]), np.array([120, 10]))
     return float(fare), float(passengers_per_trip_hour)
@@ -93,6 +100,7 @@ def equilibrium() -> tuple:
 def walk_forward(values, factory, first_day=4) -> tuple:
     """Forecast days 4-10 using only earlier days (one-based day labels)."""
     data = np.asarray(values, dtype=float)
+    # For each test day, fit ONLY the observations before that day.
     predictions = np.array([factory().fit(data[:day-1]).predict()
                             for day in range(first_day, len(data)+1)])
     actual = data[first_day-1:]
@@ -102,4 +110,5 @@ def walk_forward(values, factory, first_day=4) -> tuple:
 def vehicles_needed(passengers: float, seats=14, trips=8, buffer=.15) -> int:
     if passengers < 0 or seats <= 0 or trips <= 0 or buffer < 0:
         raise ValueError('Demand and fleet inputs must be non-negative')
+    # Round UP: a fraction of a vehicle cannot transport remaining passengers.
     return math.ceil(passengers*(1+buffer)/(seats*trips))

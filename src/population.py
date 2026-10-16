@@ -11,6 +11,7 @@ class DistrictPopulation:
 
     def __init__(self, name: str, years, populations):
         self.name = name
+        # Arrays make later growth and forecasting calculations element-wise.
         self.years = np.asarray(years, dtype=int)
         self.populations = np.asarray(populations, dtype=float)
         if self.years.ndim != 1 or self.populations.ndim != 1:
@@ -31,6 +32,7 @@ class DistrictPopulation:
     def describe(self) -> dict:
         """Return sample variance and sample SD (ddof=1)."""
         data = self.populations.tolist()
+        # statistics.variance uses n-1, unlike the default np.var (which uses n).
         return {'mean': statistics.mean(data), 'median': statistics.median(data),
                 'variance': statistics.variance(data), 'std_dev': statistics.stdev(data)}
 
@@ -38,16 +40,20 @@ class DistrictPopulation:
         """Year-on-year proportional changes."""
         if np.any(self.populations[:-1] <= 0):
             raise ValueError('Growth requires positive starting populations')
+        # Each year is compared with the immediately preceding year.
         return self.populations[1:] / self.populations[:-1] - 1
 
     def cagr(self) -> float:
         if self.populations[0] <= 0:
             raise ValueError('CAGR requires a positive starting population')
+        # Ten annual observations contain nine one-year growth intervals.
         return (self.populations[-1] / self.populations[0]) ** (1 / (len(self) - 1)) - 1
 
 
 class Forecaster(ABC):
     """Shared interface for one-step or multi-year forecasts."""
+
+    # ABC makes subclasses implement both methods before they can be used.
 
     @abstractmethod
     def fit(self, values):
@@ -63,6 +69,7 @@ class LinearTrend(Forecaster):
         self.values = np.asarray(values, dtype=float)
         if len(self.values) < 2:
             raise ValueError('Linear trend requires at least two observations')
+        # polyfit finds the straight line that minimizes squared fitting errors.
         self.slope, self.intercept = np.polyfit(np.arange(len(self.values)), self.values, 1)
         return self
 
@@ -81,6 +88,7 @@ class ExponentialGrowth(Forecaster):
         self.values = np.asarray(values, dtype=float)
         if len(self.values) < 2 or self.values[0] <= 0 or self.values[-1] <= 0:
             raise ValueError('CAGR requires positive endpoints and at least two values')
+        # Use the first and last observations to estimate one constant annual rate.
         self.rate = (self.values[-1] / self.values[0]) ** (1 / (len(self.values)-1)) - 1
         return self
 
@@ -106,6 +114,8 @@ class FibonacciRatio(Forecaster):
         last = float(self.values[-1])
         forecasts = []
         for _ in range(horizon):
+            # Consecutive Fibonacci values supply the next multiplier.
+            # This is for comparison, not a claim about real population growth.
             a, b = b, a + b
             last *= b / a
             forecasts.append(last)
@@ -118,6 +128,7 @@ def error_metrics(actual, predicted) -> dict:
     if len(a) == 0 or a.shape != p.shape or np.any(a <= 0):
         raise ValueError('Provide matching arrays with positive actual values')
     err = a - p
+    # MAPE divides by actual population; zero actuals would make it undefined.
     return {'MAE': float(np.mean(abs(err))), 'RMSE': float(np.sqrt(np.mean(err**2))),
             'MAPE (%)': float(np.mean(abs(err / a)) * 100)}
 
@@ -127,8 +138,11 @@ def bootstrap_interval(model, train, horizon: int, seed=42, repeats=1200):
     train = np.asarray(train, dtype=float)
     if len(train) < 5:
         raise ValueError('Five observations are needed for residual resampling')
+    # For each past year, predict it using only the earlier years. The errors
+    # become examples of how far future forecasts might miss the true value.
     residuals = np.array([train[i]-type(model)().fit(train[:i]).predict(1)[0]
                           for i in range(3, len(train))])
     rng = np.random.default_rng(seed)
+    # Resample those errors; 2.5% and 97.5% delimit an approximate interval.
     draws = model.predict(horizon)[None, :] + rng.choice(residuals, (repeats, horizon))
     return np.maximum(0, np.quantile(draws, [0.025, 0.975], axis=0))

@@ -14,9 +14,12 @@ class MicroGrid:
     """Solve two demand equations for solar and battery energy in kWh."""
 
     def __init__(self):
+        # Rows represent demand equations; columns represent solar and battery.
         self.matrix = np.array([[3.0, 2.0], [4.0, 1.0]])
 
     def diagnostics(self) -> tuple:
+        # A nonzero determinant means a unique algebraic solution. A large
+        # condition number means demand errors could strongly affect it.
         return float(np.linalg.det(self.matrix)), float(np.linalg.cond(self.matrix))
 
     def solve_day(self, d1: float, d2: float) -> dict:
@@ -30,6 +33,8 @@ class MicroGrid:
             feasible = np.maximum(raw, 0)
             return {'solar': feasible[0], 'battery': feasible[1], 'infeasible': False,
                     'residual': float(np.linalg.norm(self.matrix @ feasible-values))}
+        # Exact equations sometimes require negative energy. NNLS finds the
+        # closest non-negative assignment; residual shows the unmatched demand.
         feasible, residual = nnls(self.matrix, values)
         return {'solar': feasible[0], 'battery': feasible[1], 'infeasible': True,
                 'residual': float(residual)}
@@ -39,6 +44,7 @@ class MicroGrid:
         data = np.asarray(demands, dtype=float)
         if data.ndim != 2 or data.shape[1] != 2 or np.any(~np.isfinite(data)) or np.any(data < 0):
             raise ValueError('Demands must be a non-negative, finite n x 2 array')
+        # Transpose from n rows of days to a 2 x n right-hand side for SciPy.
         return linalg.solve(self.matrix, data.T).T
 
 
@@ -46,6 +52,7 @@ def get_demand(input_func=input) -> float:
     """Prompt until a valid demand is provided; injectable input helps testing."""
     while True:
         try:
+            # Reject blanks, text, negative values and infinity; then re-prompt.
             number = float(input_func('Enter demand in kWh: ').strip())
             if math.isfinite(number) and number >= 0:
                 return number
@@ -61,6 +68,7 @@ def generate_demands(path: str, seed=42) -> None:
         writer = csv.writer(f)
         writer.writerow(['day', 'D1_kWh', 'D2_kWh'])
         for day in range(1, 31):
+            # The weekend shift produces a repeated weekly demand pattern.
             weekend = (day-1) % 7 in (5, 6)
             solar = max(1, rng.normal(25 if not weekend else 21, 2))
             battery = max(1, rng.normal(17 if not weekend else 21, 2))
@@ -68,6 +76,7 @@ def generate_demands(path: str, seed=42) -> None:
             d1 += rng.normal(0, 0.5)
             d2 += rng.normal(0, 0.5)
             if day in (10, 24):
+                # Include two cases where the exact equations need negative y.
                 d2 = 1.5*d1  # violates the non-negative battery constraint
             writer.writerow([day, round(d1, 3), round(d2, 3)])
 

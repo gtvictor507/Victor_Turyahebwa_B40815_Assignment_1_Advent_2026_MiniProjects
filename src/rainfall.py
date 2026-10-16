@@ -31,10 +31,12 @@ class Region:
     def cv(self) -> float:
         if self.mean() == 0:
             raise ValueError('CV is undefined when rainfall is zero throughout')
+        # Sample SD / monthly mean measures relative month-to-month spread.
         return float(np.std(self.rainfall, ddof=1)/self.mean())
 
     def rainy_peaks(self, prominence=25) -> list:
         """Find monthly peaks with Dec and Jan treated as adjacent."""
+        # Padding lets find_peaks inspect a peak near the year boundary.
         extended = np.r_[self.rainfall[-2:], self.rainfall, self.rainfall[:2]]
         indexes, _ = find_peaks(extended, prominence=prominence, distance=2)
         return sorted({int(i-2) for i in indexes if 2 <= i < 14})
@@ -51,6 +53,7 @@ class CropRule:
     def classify(self, mm: float) -> str:
         if mm < 0:
             raise ValueError('Rainfall cannot be negative')
+        # These are classroom moisture bands, not measured flood/yield risks.
         return 'Drought risk' if mm < self.minimum else ('Waterlogging risk' if mm > self.maximum else 'Suitable')
 
 
@@ -58,6 +61,7 @@ def cosine_similarity(a, b) -> float:
     x, y = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
     if x.shape != y.shape or x.ndim != 1 or np.linalg.norm(x)*np.linalg.norm(y) == 0:
         raise ValueError('Equal-length nonzero vectors are required')
+    # Compare the vectors' direction, not their total rainfall magnitude.
     return float(np.dot(x, y)/(np.linalg.norm(x)*np.linalg.norm(y)))
 
 

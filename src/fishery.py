@@ -21,13 +21,16 @@ class FishStock:
         harvests = []
         for _ in range(weeks):
             current = stock[-1]
+            # Harvest is taken from the stock at the START of the week.
             catch = self.harvest_rate * current
+            # Growth slows as current stock approaches carrying capacity K.
             growth = self.growth * current * (1-current/self.capacity)
             harvests.append(catch)
             stock.append(max(0, current + growth-catch))
         return np.array(stock), np.array(harvests)
 
     def maximum_sustainable_yield(self) -> float:
+        # Logistic growth is greatest at half the carrying capacity.
         return self.growth*self.capacity/4
 
 
@@ -44,6 +47,7 @@ class PriceModel:
             raise ValueError('Weeks must be positive')
         prices, last = [], self.start
         for _ in range(weeks):
+            # Clip each new random-walk price to the stated UGX/kg bounds.
             last = float(np.clip(last + rng.normal(0, self.noise), self.lower, self.upper))
             prices.append(last)
         return np.array(prices)
@@ -57,6 +61,7 @@ class RiskAssessor:
         if len(data) < 2 or statistics.mean(data) <= 0:
             raise ValueError('At least two values with positive mean are required')
         mean = statistics.mean(data)
+        # Revenue variance has units UGX squared; CV has no units.
         return {'mean': mean, 'median': statistics.median(data),
                 'variance': statistics.variance(data), 'std_dev': statistics.stdev(data),
                 'CV': statistics.stdev(data)/mean}
@@ -70,5 +75,6 @@ class RiskAssessor:
 def annual_revenue_samples(harvest_tonnes, price_model, repeats=1200, seed=42):
     """One RNG stream generates many independent price paths; tonnes -> kg."""
     rng = np.random.default_rng(seed)
+    # Each price path uses fresh random draws; convert tonnes to kilograms.
     return np.array([np.sum(harvest_tonnes*1000*price_model.simulate(
         len(harvest_tonnes), rng)) for _ in range(repeats)])
